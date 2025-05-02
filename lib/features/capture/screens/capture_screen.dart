@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 import '../providers/camera_provider.dart'; // Import the provider
 
@@ -33,6 +34,29 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     await ref.read(cameraControllerProvider.notifier).initializeCamera();
   }
 
+  // Cropping Logic
+  Future<CroppedFile?> _cropImage(String filePath) async {
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: filePath,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 90, // Adjust quality as needed
+      uiSettings: [
+        AndroidUiSettings(
+            toolbarTitle: 'Crop Image',
+            toolbarColor: Theme.of(context).colorScheme.primary,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false),
+        IOSUiSettings(
+          title: 'Crop Image',
+          // TODO: Potentially add aspect ratio presets if needed
+        ),
+        // WebUiSettings is available too if needed
+      ],
+    );
+    return croppedFile;
+  }
+
   void _onTakePictureButtonPressed() async {
     final controller = ref.read(cameraControllerProvider.notifier).controller;
     if (controller == null || !controller.value.isInitialized) {
@@ -47,13 +71,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     try {
       final XFile imageFile = await controller.takePicture();
-      // TODO: Navigate to a new screen or process the image
-      print('Picture saved to ${imageFile.path}');
-      // Example: show snackbar
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Picture taken: ${imageFile.path}'))
-      );
+
+      // Crop the taken picture
+      final CroppedFile? croppedFile = await _cropImage(imageFile.path);
+
+      if (croppedFile != null) {
+        // TODO: Navigate or process the CROPPED image
+        print('Cropped picture saved to ${croppedFile.path}');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cropped Picture: ${croppedFile.path}')),
+        );
+      } else {
+        print('Image cropping cancelled.');
+      }
 
     } on CameraException catch (e) {
       print('Error taking picture: ${e.code}\n${e.description}');
@@ -69,12 +101,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     try {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
-        // TODO: Navigate to a new screen or process the image
-        print('Image selected from gallery: ${image.path}');
-        if (!mounted) return;
-         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Image selected: ${image.path}'))
-         );
+          if (!mounted) return;
+
+          // Crop the selected image
+          final CroppedFile? croppedFile = await _cropImage(image.path);
+
+          if (croppedFile != null) {
+            // TODO: Navigate or process the CROPPED image
+            print('Cropped image selected from gallery: ${croppedFile.path}');
+             if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Cropped Image: ${croppedFile.path}')),
+            );
+          } else {
+             print('Image cropping cancelled.');
+          }
       }
     } catch (e) {
        print('Error picking image from gallery: $e');
