@@ -5,6 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 
 import '../providers/camera_provider.dart'; // Import the provider
+import 'package:shopapp/services/vision_service.dart'; // Import VisionService
+import 'package:shopapp/screens/results_screen.dart'; // Import ResultsScreen
+
+// Provider for vision processing loading state
+final _visionProcessingProvider = StateProvider<bool>((ref) => false);
 
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
@@ -57,6 +62,35 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     return croppedFile;
   }
 
+  // Common function to handle image processing and navigation
+  Future<void> _processImage(String imagePath) async {
+    ref.read(_visionProcessingProvider.notifier).state = true;
+    try {
+      final visionService = ref.read(visionServiceProvider);
+      final sessionId = await visionService.identifyObjectsAndProducts(imagePath);
+
+      // Navigate to Results screen
+      if (mounted) {
+        Navigator.pushNamed(
+          context,
+          ResultsScreen.routeName,
+          arguments: sessionId, // Pass sessionId as argument
+        );
+      }
+    } catch (e) {
+      print('Error during vision processing: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Image processing failed: ${e.toString()}')),
+        );
+      }
+    } finally {
+       if (mounted) {
+           ref.read(_visionProcessingProvider.notifier).state = false;
+       }
+    }
+  }
+
   void _onTakePictureButtonPressed() async {
     final controller = ref.read(cameraControllerProvider.notifier).controller;
     if (controller == null || !controller.value.isInitialized) {
@@ -73,20 +107,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       final XFile imageFile = await controller.takePicture();
       if (!mounted) return;
 
-      // Crop the taken picture
       final CroppedFile? croppedFile = await _cropImage(imageFile.path);
 
       if (croppedFile != null) {
-        // TODO: Navigate or process the CROPPED image
         print('Cropped picture saved to ${croppedFile.path}');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cropped Picture: ${croppedFile.path}')),
-        );
+        await _processImage(croppedFile.path); // Process the cropped image
       } else {
         print('Image cropping cancelled.');
       }
-
     } on CameraException catch (e) {
       print('Error taking picture: ${e.code}\n${e.description}');
        if (!mounted) return;
@@ -101,21 +129,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     try {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
-          if (!mounted) return;
+        if (!mounted) return;
 
-          // Crop the selected image
-          final CroppedFile? croppedFile = await _cropImage(image.path);
+        final CroppedFile? croppedFile = await _cropImage(image.path);
 
-          if (croppedFile != null) {
-            // TODO: Navigate or process the CROPPED image
-            print('Cropped image selected from gallery: ${croppedFile.path}');
-             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Cropped Image: ${croppedFile.path}')),
-            );
-          } else {
-             print('Image cropping cancelled.');
-          }
+        if (croppedFile != null) {
+           print('Cropped image selected from gallery: ${croppedFile.path}');
+           await _processImage(croppedFile.path); // Process the cropped image
+        } else {
+           print('Image cropping cancelled.');
+        }
       }
     } catch (e) {
        print('Error picking image from gallery: $e');
@@ -129,6 +152,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   @override
   Widget build(BuildContext context) {
     final cameraState = ref.watch(cameraControllerProvider);
+    final isProcessing = ref.watch(_visionProcessingProvider);
 
     return Scaffold(
       // Use a transparent AppBar for fullscreen feel
@@ -140,41 +164,65 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: cameraState.when(
-        data: (controller) {
-          if (!controller.value.isInitialized) {
-             // This state should ideally not be reached if initialization is handled correctly
-             return const Center(child: Text('Camera not initialized'));
-          }
-          return Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              // Ensure CameraPreview is built before the controls
-              Center(
-                child: AspectRatio(
-                  // Use aspect ratio from controller to prevent distortion
-                  aspectRatio: controller.value.aspectRatio,
-                  child: CameraPreview(controller),
+      body: Stack(
+        children: [
+          cameraState.when(
+            data: (controller) {
+              if (!controller.value.isInitialized) {
+                 // This state should ideally not be reached if initialization is handled correctly
+                 return const Center(child: Text('Camera not initialized'));
+              }
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // Ensure CameraPreview is built before the controls
+                  Center(
+                    child: AspectRatio(
+                      // Use aspect ratio from controller to prevent distortion
+                      aspectRatio: controller.value.aspectRatio,
+                      child: CameraPreview(controller),
+                    ),
+                  ),
+                  // Controls Overlay
+                  _buildControlsOverlay(),
+                ],
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stackTrace) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('Failed to initialize camera:\n$error',
+                    style: const TextStyle(color: Colors.red)),
                 ),
               ),
-              // Controls Overlay
-              _buildControlsOverlay(),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text('Failed to initialize camera:\n$error',
-                style: const TextStyle(color: Colors.red)),
-            ),
           ),
+          // Loading overlay for vision processing
+          if (isProcessing)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                 child: Column(
+                   mainAxisSize: MainAxisSize.min,
+                   children: [
+                     CircularProgressIndicator(color: Colors.white),
+                     SizedBox(height: 16),
+                     Text('Processing image...', style: TextStyle(color: Colors.white, fontSize: 16)),
+                   ],
+                 ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
   Widget _buildControlsOverlay() {
+    final isProcessing = ref.watch(_visionProcessingProvider);
+    // Disable buttons while processing
+    final VoidCallback? takePictureAction = isProcessing ? null : _onTakePictureButtonPressed;
+    final VoidCallback? importAction = isProcessing ? null : _onImportFromGalleryPressed;
+
     return Positioned(
       bottom: 30.0,
       left: 0,
@@ -185,7 +233,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           IconButton(
             icon: const Icon(Icons.photo_library, size: 40),
             color: Colors.white,
-            onPressed: _onImportFromGalleryPressed,
+            onPressed: importAction,
             tooltip: 'Import from Gallery',
           ),
           Container(
@@ -196,7 +244,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             child: IconButton(
               icon: const Icon(Icons.camera_alt, size: 60),
               color: Colors.white,
-              onPressed: ref.watch(cameraControllerProvider).isLoading ? null : _onTakePictureButtonPressed,
+              onPressed: ref.watch(cameraControllerProvider).isLoading ? null : takePictureAction,
               tooltip: 'Take Picture',
             ),
           ),
