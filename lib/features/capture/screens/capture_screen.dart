@@ -8,6 +8,8 @@ import '../providers/camera_provider.dart'; // Import the provider
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
+  static const String routeName = '/capture'; // Add route name
+
   @override
   ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
 }
