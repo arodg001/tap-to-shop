@@ -1,3 +1,4 @@
+import 'dart:io'; // For Platform check
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,48 +30,94 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      ref.read(_loadingProvider.notifier).state = true;
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-      final authService = ref.read(authServiceProvider);
-      final dbService = ref.read(databaseServiceProvider); // Get DatabaseService
-
-      try {
-        UserCredential userCredential;
-        if (_isLogin) {
-          userCredential = await authService.signInWithEmailAndPassword(email, password);
-          print('Login successful: ${userCredential.user?.uid}');
-        } else {
-          userCredential = await authService.createUserWithEmailAndPassword(email, password);
-          print('Registration successful: ${userCredential.user?.uid}');
-          // Create user record in Firestore after registration
-          if (userCredential.user != null) {
-             final newUser = UserModel(
-                userId: userCredential.user!.uid,
-                email: userCredential.user!.email!,
-                createdAt: DateTime.now(),
-                // name: userCredential.user?.displayName, // Name might not be available immediately
-             );
-             await dbService.upsertUserRecord(newUser);
-          }
-        }
-        // Navigation to HomeScreen is handled by AuthWrapper listening to auth state changes
-      } catch (e) {
-        // Show error message
-        if (mounted) {
+  // Helper to show snackbar errors
+  void _showError(String message) {
+      if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())),
+              SnackBar(content: Text(message), backgroundColor: Colors.red),
           );
-        }
-      } finally {
-         // Check mounted again before updating state
-        if (mounted) {
-            ref.read(_loadingProvider.notifier).state = false;
-        }
+      }
+  }
+
+  // Helper to create/update user record after any sign-in method
+  Future<void> _upsertUserAfterSignIn(UserCredential userCredential) async {
+      final dbService = ref.read(databaseServiceProvider);
+      if (userCredential.user != null) {
+          final user = userCredential.user!;
+          final newUser = UserModel(
+              userId: user.uid,
+              email: user.email ?? 'no-email@example.com', // Provide default if email is null
+              name: user.displayName,
+              createdAt: user.metadata.creationTime ?? DateTime.now(),
+          );
+          try {
+            await dbService.upsertUserRecord(newUser);
+          } catch (dbError) {
+             // Log DB error but don't block login
+             print('Error saving user record after sign-in: $dbError');
+              _showError('Could not save user data, but login successful.');
+          }
+      }
+  }
+
+  // --- Submit Methods ---
+  Future<void> _submitEmailPasswordForm() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    ref.read(_loadingProvider.notifier).state = true;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final authService = ref.read(authServiceProvider);
+
+    try {
+      UserCredential userCredential;
+      if (_isLogin) {
+        userCredential = await authService.signInWithEmailAndPassword(email, password);
+        print('Email Login successful: ${userCredential.user?.uid}');
+        // Don't upsert user record on standard login, only on registration/OAuth
+      } else {
+        userCredential = await authService.createUserWithEmailAndPassword(email, password);
+        print('Email Registration successful: ${userCredential.user?.uid}');
+        await _upsertUserAfterSignIn(userCredential);
+      }
+    } catch (e) {
+      _showError(e.toString());
+    } finally {
+      if (mounted) {
+        ref.read(_loadingProvider.notifier).state = false;
       }
     }
+  }
+
+  Future<void> _submitGoogleSignIn() async {
+      ref.read(_loadingProvider.notifier).state = true;
+      final authService = ref.read(authServiceProvider);
+      try {
+         final userCredential = await authService.signInWithGoogle();
+         print('Google Sign-In successful: ${userCredential.user?.uid}');
+         await _upsertUserAfterSignIn(userCredential);
+      } catch (e) {
+         _showError(e.toString());
+      } finally {
+         if (mounted) {
+            ref.read(_loadingProvider.notifier).state = false;
+         }
+      }
+  }
+
+   Future<void> _submitAppleSignIn() async {
+      ref.read(_loadingProvider.notifier).state = true;
+      final authService = ref.read(authServiceProvider);
+      try {
+         final userCredential = await authService.signInWithApple();
+         print('Apple Sign-In successful: ${userCredential.user?.uid}');
+         await _upsertUserAfterSignIn(userCredential);
+      } catch (e) {
+         _showError(e.toString());
+      } finally {
+         if (mounted) {
+            ref.read(_loadingProvider.notifier).state = false;
+         }
+      }
   }
 
   @override
@@ -89,6 +136,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 TextFormField(
                   controller: _emailController,
+                  enabled: !isLoading,
                   decoration: const InputDecoration(labelText: 'Email'),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
@@ -101,6 +149,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _passwordController,
+                  enabled: !isLoading,
                   decoration: const InputDecoration(labelText: 'Password'),
                   obscureText: true,
                   validator: (value) {
@@ -115,7 +164,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const CircularProgressIndicator()
                 else
                   ElevatedButton(
-                    onPressed: _submitForm,
+                    onPressed: _submitEmailPasswordForm,
                     child: Text(_isLogin ? 'Login' : 'Register'),
                   ),
                 const SizedBox(height: 12),
@@ -128,7 +177,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Text(
                       _isLogin ? 'Create an account' : 'I already have an account'),
                 ),
-                // TODO: Add buttons for Google/Apple OAuth
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 10),
+                if (!isLoading)
+                    ElevatedButton.icon(
+                        icon: const Icon(Icons.g_mobiledata),
+                        label: const Text('Sign in with Google'),
+                        onPressed: _submitGoogleSignIn,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                    ),
+                const SizedBox(height: 10),
+                if (!isLoading && (Platform.isIOS || Platform.isMacOS))
+                    ElevatedButton.icon(
+                        icon: const Icon(Icons.apple),
+                        label: const Text('Sign in with Apple'),
+                        onPressed: _submitAppleSignIn,
+                         style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white),
+                    ),
               ],
             ),
           ),

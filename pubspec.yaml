@@ -39,6 +39,10 @@ dependencies:
   firebase_auth: ^5.0.0 # For authentication
   cloud_firestore: ^5.0.0 # For Firestore database
 
+  # OAuth Providers
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^6.1.1
+
   # State Management
   flutter_riverpod: ^2.5.1
 
