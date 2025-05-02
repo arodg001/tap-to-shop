@@ -11,6 +11,10 @@ import 'package:shopapp/screens/results_screen.dart'; // Import ResultsScreen
 // Provider for vision processing loading state
 final _visionProcessingProvider = StateProvider<bool>((ref) => false);
 
+// Provider to hold the latest vision results for passing to ResultsScreen
+// This avoids passing complex data directly via Navigator arguments
+final visionResultsProvider = StateProvider<List<MatchResultModel>?>((ref) => null);
+
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
@@ -65,17 +69,18 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   // Common function to handle image processing and navigation
   Future<void> _processImage(String imagePath) async {
     ref.read(_visionProcessingProvider.notifier).state = true;
+    ref.read(visionResultsProvider.notifier).state = null; // Clear previous results
     try {
       final visionService = ref.read(visionServiceProvider);
-      final sessionId = await visionService.identifyObjectsAndProducts(imagePath);
+      // Call the updated service method
+      final List<MatchResultModel> results = await visionService.identifyProducts(imagePath);
 
-      // Navigate to Results screen
+      // Store results in the provider
+      ref.read(visionResultsProvider.notifier).state = results;
+
+      // Navigate to Results screen (no longer passing arguments directly)
       if (mounted) {
-        Navigator.pushNamed(
-          context,
-          ResultsScreen.routeName,
-          arguments: sessionId, // Pass sessionId as argument
-        );
+        Navigator.pushNamed(context, ResultsScreen.routeName);
       }
     } catch (e) {
       print('Error during vision processing: $e');
@@ -85,9 +90,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         );
       }
     } finally {
-       if (mounted) {
-           ref.read(_visionProcessingProvider.notifier).state = false;
-       }
+      if (mounted) {
+        ref.read(_visionProcessingProvider.notifier).state = false;
+      }
     }
   }
 

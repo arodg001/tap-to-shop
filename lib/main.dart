@@ -57,17 +57,18 @@ class MyApp extends StatelessWidget {
       },
       // Optional: Handle routes not explicitly defined or routes with arguments
       onGenerateRoute: (settings) {
-         if (settings.name == ResultsScreen.routeName) {
-           final args = settings.arguments as String?; // Example: expecting sessionId as String
-           if (args != null) {
-             return MaterialPageRoute(
-               builder: (context) => ResultsScreen(sessionId: args),
-             );
-           }
-           // Handle case where arguments are missing or invalid
-           return MaterialPageRoute(builder: (context) => const HomeScreen()); // Or an error screen
-         }
+         // Example: Handle ResultsScreen if it needed arguments
+         // if (settings.name == ResultsScreen.routeName) {
+         //   final args = settings.arguments as Map<String, dynamic>?; 
+         //   if (args != null) {
+         //     return MaterialPageRoute(
+         //       builder: (context) => ResultsScreen(results: args['results']),
+         //     );
+         //   }
+         // }
          // Handle other potential routes or return null
+         // Returning null will fallback to onUnknownRoute (if defined) or show an error.
+         print('Unhandled route: ${settings.name}');
          return null;
       }
     );
