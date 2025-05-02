@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shopapp/features/capture/screens/capture_screen.dart'; // Import CaptureScreen
+import 'package:shopapp/screens/profile_screen.dart'; // Import ProfileScreen
+import 'package:shopapp/services/auth_service.dart'; // Import AuthService
 
 // TODO: Add Firebase Auth Logout
 // TODO: Import ProfileScreen
@@ -20,17 +22,23 @@ class HomeScreen extends ConsumerWidget {
             icon: const Icon(Icons.person),
             tooltip: 'Profile',
             onPressed: () {
-              // TODO: Navigate to ProfileScreen
-               Navigator.pushNamed(context, '/profile'); // Placeholder
+              Navigator.pushNamed(context, ProfileScreen.routeName); // Use named route
             },
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-             tooltip: 'Logout',
-            onPressed: () {
-              // TODO: Implement logout logic
-              // Simulate logout - navigate to login
-               Navigator.pushReplacementNamed(context, '/login'); // Placeholder
+            tooltip: 'Logout',
+            onPressed: () async {
+              try {
+                await ref.read(authServiceProvider).signOut();
+                // Navigation back to LoginScreen is handled by AuthWrapper
+              } catch (e) {
+                 if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Logout failed: ${e.toString()}')),
+                    );
+                 }
+              }
             },
           ),
         ],
