@@ -1,0 +1,165 @@
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../providers/camera_provider.dart'; // Import the provider
+
+class CaptureScreen extends ConsumerStatefulWidget {
+  const CaptureScreen({super.key});
+
+  @override
+  ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
+}
+
+class _CaptureScreenState extends ConsumerState<CaptureScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize camera when the widget is first built
+    // Use WidgetsBinding to ensure it runs after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeCamera();
+    });
+  }
+
+  // No need for dispose method here as the provider handles controller disposal
+
+  Future<void> _initializeCamera() async {
+    // Trigger initialization via the provider
+    await ref.read(cameraControllerProvider.notifier).initializeCamera();
+  }
+
+  void _onTakePictureButtonPressed() async {
+    final controller = ref.read(cameraControllerProvider.notifier).controller;
+    if (controller == null || !controller.value.isInitialized) {
+      print('Error: select a camera first.');
+      return;
+    }
+
+    if (controller.value.isTakingPicture) {
+      // A capture is already pending, do nothing.
+      return;
+    }
+
+    try {
+      final XFile imageFile = await controller.takePicture();
+      // TODO: Navigate to a new screen or process the image
+      print('Picture saved to ${imageFile.path}');
+      // Example: show snackbar
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Picture taken: ${imageFile.path}'))
+      );
+
+    } on CameraException catch (e) {
+      print('Error taking picture: ${e.code}\n${e.description}');
+       if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error taking picture: ${e.description}'))
+        );
+    }
+  }
+
+  void _onImportFromGalleryPressed() async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        // TODO: Navigate to a new screen or process the image
+        print('Image selected from gallery: ${image.path}');
+        if (!mounted) return;
+         ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Image selected: ${image.path}'))
+         );
+      }
+    } catch (e) {
+       print('Error picking image from gallery: $e');
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error selecting image: $e'))
+       );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cameraState = ref.watch(cameraControllerProvider);
+
+    return Scaffold(
+      // Use a transparent AppBar for fullscreen feel
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Tap to Capture',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: cameraState.when(
+        data: (controller) {
+          if (!controller.value.isInitialized) {
+             // This state should ideally not be reached if initialization is handled correctly
+             return const Center(child: Text('Camera not initialized'));
+          }
+          return Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              // Ensure CameraPreview is built before the controls
+              Center(
+                child: AspectRatio(
+                  // Use aspect ratio from controller to prevent distortion
+                  aspectRatio: controller.value.aspectRatio,
+                  child: CameraPreview(controller),
+                ),
+              ),
+              // Controls Overlay
+              _buildControlsOverlay(),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text('Failed to initialize camera:\n$error',
+                style: const TextStyle(color: Colors.red)),
+            ),
+          ),
+      ),
+    );
+  }
+
+  Widget _buildControlsOverlay() {
+    return Positioned(
+      bottom: 30.0,
+      left: 0,
+      right: 0,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.photo_library, size: 40),
+            color: Colors.white,
+            onPressed: _onImportFromGalleryPressed,
+            tooltip: 'Import from Gallery',
+          ),
+          Container(
+             decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.camera_alt, size: 60),
+              color: Colors.white,
+              onPressed: ref.watch(cameraControllerProvider).isLoading ? null : _onTakePictureButtonPressed,
+              tooltip: 'Take Picture',
+            ),
+          ),
+          const SizedBox(width: 40), // Placeholder for symmetry
+        ],
+      ),
+    );
+  }
+} 
