@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shopapp/models/capture_session_model.dart';
 import 'package:shopapp/models/user_model.dart';
+import 'package:shopapp/models/user_profile_model.dart';
 
 // Service class for Firestore interactions
 class DatabaseService {
@@ -8,7 +10,7 @@ class DatabaseService {
 
   DatabaseService(this._db);
 
-  // Get reference to the users collection
+  // === User ===
   CollectionReference<UserModel> get usersCollection =>
       _db.collection('users').withConverter<UserModel>(
             fromFirestore: (snapshot, _) => UserModel.fromJson(snapshot.data()!),
@@ -29,8 +31,57 @@ class DatabaseService {
     }
   }
 
-  // TODO: Add methods for profile operations (get/update UserProfileModel)
-  // TODO: Add methods for session history, results, etc.
+  // === Profile ===
+   CollectionReference<UserProfileModel> get profilesCollection =>
+      _db.collection('profiles').withConverter<UserProfileModel>(
+            fromFirestore: (snapshot, _) => UserProfileModel.fromJson(snapshot.data()!),
+            toFirestore: (profile, _) => profile.toJson(),
+          );
+
+  // Get user profile
+  Future<UserProfileModel?> getUserProfile(String userId) async {
+     try {
+      final doc = await profilesCollection.doc(userId).get();
+      return doc.data(); // Returns null if document doesn't exist
+    } catch (e) {
+      print('Error getting user profile for $userId: $e');
+      return null; // Or rethrow
+    }
+  }
+
+  // Update user profile
+  Future<void> updateUserProfile(UserProfileModel profile) async {
+     try {
+       await profilesCollection.doc(profile.userId).set(profile, SetOptions(merge: true));
+       print('Profile updated for ${profile.userId}');
+    } catch (e) {
+      print('Error updating user profile for ${profile.userId}: $e');
+      throw Exception('Failed to update profile.');
+    }
+  }
+
+  // === Sessions ===
+  CollectionReference<CaptureSessionModel> get sessionsCollection =>
+      _db.collection('sessions').withConverter<CaptureSessionModel>(
+            fromFirestore: (snapshot, _) => CaptureSessionModel.fromJson(snapshot.data()!),
+            toFirestore: (session, _) => session.toJson(),
+          );
+
+  // Get session history for a user, ordered by timestamp descending
+  Stream<List<CaptureSessionModel>> getUserSessionHistory(String userId) {
+     return sessionsCollection
+         .where('userId', isEqualTo: userId)
+         .orderBy('timestamp', descending: true)
+         .limit(20) // Limit results for performance
+         .snapshots()
+         .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList())
+         .handleError((error) {
+            print('Error fetching session history for $userId: $error');
+            return []; // Return empty list on error
+          });
+  }
+
+  // TODO: Add method to fetch combined results (MatchResult + AffiliateLink) for a session
 }
 
 // Provider for FirebaseFirestore instance
