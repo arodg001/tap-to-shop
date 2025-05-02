@@ -1,0 +1,15 @@
+---
+description: How I like to code
+globs: 
+alwaysApply: false
+---
+
+# Coding Workflow preferences
+
+- At the start of a program, create a repo on Github using the github MCP
+- Focus on the area of code relevant to the task
+- Do not touch code that is unrelated to the task
+- Write thorough tests for all major functionality
+- Avoid making major changes to the patterns and architecture of how a feature works, after it has shown to work well,unless explicitly instructed
+- Always think about what other methods and areas of code might be affected by code changes
+- After making changes, comit them to github using the github MCP

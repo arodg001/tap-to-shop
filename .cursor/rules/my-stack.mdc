@@ -1,0 +1,35 @@
+---
+description: The program's tech stack
+globs: 
+alwaysApply: false
+---
+
+# Technical Stack
+
+
+
+Mobile: 
+- Flutter (Dart 3.x)
+- Plugins: camera, image_picker, flutter_image_crop
+
+Backend:
+- Node.js (Express) hosted on Cloud Run
+
+Authentication:
+- Firebase Auth (OAuth2 & JWT)
+
+Data Storage:
+- Firestore (NoSQL) or Cloud SQL (PostgreSQL)
+
+Vision Integration:
+- Google Cloud Vision via REST (OBJECT_LOCALIZATION, PRODUCT_SEARCH)
+
+Infrastructure as Code:
+- Terraform (GCP resources)
+
+CI/CD:
+- GitHub Actions → Cloud Build → Cloud Run
+
+Monitoring & Logging:
+- Google Cloud Monitoring & Logging
+- Sentry for client‑side error tracking
